@@ -1,0 +1,262 @@
+
+The oh so very verbose rev. engineered guide to Heartquake/Iguana's water effect.
+Written in may 2016 for retro platform coders so inclined to recreate this fun effect.
+
+by Niels Johannes de Wit, also known as Superplek/Bypass, or as Baudsurfer put it, the coolest guy on the planet.
+Comments, bashing, pointing out typos or rubbing my nose in blatant mistakes: ndewit@gmail.com!
+
+** WHUT? **
+
+Youtube: https://youtu.be/be58zEABBSo?t=330
+Link to original source code by Iguana: https://www.hornet.org/code/demosrc/demos/hq_water.zip
+
+OK, so here is what happens. It'll be a bit of plain text and pseudo code as it's a bit of a messy blend between Pascal and x86 assembler (16-bit).
+I may be fucking verbose at times, sorry about that, but it prevents making assumptions :-)
+
+Firstly, one has 2 water buffers. In Heartquake they are 16-bit signed buffers (rather small, 160x85, so half screen width, little less than half the 320x200 screen for the water, and obviously half precision horizontally (i.e. 2 screen pixels per water drop).  This made practical sense since it provides a decent range and subtraction without wrapping, plus it was real mode so 16-bit registers were the native size.
+
+So, for each frame:
+
+** STEP 1: integration **
+
+Each frame, *firstly*, an integration step is done, or rather approximated, to animate the water. It's not unlike your average cheap blur, just a little bit more intricate.
+
+We have buffer A and B. Theoretically you'd need three, but we can do with just two (will become clear later).
+
+The integration loop looks as follows:
+
+We're going to integrate buffer A with buffer B and store the result in buffer B (which we will later use to project/render).
+
+Firstly, for both buffers, we skip the first and last line as to cheaply omit conditional checks to avoid access violations. Don't worry, it looks fine so long as you avoid rendering waves or whatever towards the edges.
+
+Then, for each pixel, take the 4 neighbouring ones from buffer A, add them up, and divide the result by 2 (arithmetic shift right by 1). Then, take the value from buffer B (which is the one we rendered last frame and thus holds the previous frame's water state) and fully subtract that value from our previous result. Then lastly comes dampening. Copy the result we have now, arithmetically shift it right by 4 (or divide by 16), subtract it from our result and this finally is written to buffer B: voila, our new water state. Dividing by 16 is what Heartquake usually does though depending on what they were rendering (waves or text or whatever) they made it variable, I cite:
+
+"
+; Dampening is simulated by subtracting 1/2^n of result.
+; n=4 gives best-looking result
+; n<4 (eg 2 or 3) thicker consistency, waves die out immediately
+; n>4 (eg 8 or 12) more fluid, waves die out slowly
+"
+
+So for text they're probably using a lower divider, whereas the sine stuff and drops profit from a much slower falloff, the "blur" does the work for you to spread it out nicely.
+
+When this step is done, we switch buffers A and B (use a boolean to test and optionally add buffer size or exchange registers, whatever works for you).
+
+** STEP 2: animation **
+
+This is rather simple. Keep in mind that what was buffer A is now buffer B and vice versa. It boils down to writing to the buffer we just already wrote the result of step 1 to.
+
+Basically anything goes, keep in mind to keep away from the upper and lower edge. Since Heartquake uses signed values (and so should you, or approximate it by a bias which seems like something you might need for an 8-bit platform) it's purely a matter of adding and/or subtracting. This can be an animated sinus plotter, a text plotter, be creative (or just download HQ_WATER.ZIP, it's in the Hornet archives and most of this code is in Pascal). Subtracting yields a funny effect. Make sure you use sensible values.
+
+If you look at the part closely you'll see that the text insinuates some kind of perspective, but that's just a matter of a smart color palette and pre-rendered cursive bitmaps :-)
+
+Also, I spotted that they usually don't write single pixels but blocks of 2x2 or larger for sinus animations or drops. Another tip: they convert their static text bitmaps to boolean (bit per pixel) to conserve space (explains BitLift in ASMFX.ASM). There's also an IntLift but I haven't seen it used, though obviously that would allow for more detail if you can swing it. As you can see in Heartquake the text is lifted up quite high, uniformly. In WATER.PAS you can see that depending on the text they're lifting it somewhere between 96 and 256 units.
+
+Important, and I'll get back to this later in step 3, in their case and given their spacious 16-bit range each discrete height step is 8. The higher this value, the smoother the results of the integration step will be visually.
+
+I highly recommend having a peek at that part of the original source!
+
+** STEP 3: rendering/projection **
+
+Heartquake uses a nifty and cheap way. You can see that the sky is purple, and the water is yellow (though there's a blend towards the sky color at the top). This was easy since PC MCGA (320x200, 256 colors) has a 256 color palette and just 200 lines to do this, leaving another bunch of colors for the font writer above it. If you pause the demo at a calm point and look at the left or right border you can see exactly what I mean.
+
+Also, as I mentioned before, this is a voxel method, but there is no real-time perspective at play whatsoever.
+
+First off, let me introduce another 16-bit signed array (320 pixels wide in this case, basically just your screen width) they call 'TOPS'. Before
+the effect starts this array is filled with the following value.. Well better, let me show the Pascal function they call:
+
+"
+procedure InitTable;
+var i : integer;
+begin
+  FillChar( U^, sizeof(TU), 0 );
+  for i := 0 to NX-1 do TOPS[i] := 199*320+2*i;
+end;
+"
+
+Now what this does is simply erasing the water buffers (0, which means flat) and filling the TOPS array with a value that basically means:
+the bottom most pixel for each column on screen (the multiply by 2 is there because they're working with 16-bits).
+
+Now then, on to the (simple) projection routine. It's a little bit of a hack that works specifically in their case, so I'll try to refrain from going too much into irrelevant details.
+
+As I mentioned before, the discrete heigth step granularity is 8, here's proof:
+
+"     
+sub bx,8              ; each row is 8 (=1 pixel) higher
+mov ax, [si]          ; then the last.
+"
+
+I'm sure he meant to type 'than' but hey, Spaniards in the early 90s.
+
+We're going to render columns, starting at the bottom of each vertical line. I'll use a little indentation here to prevent it becoming just as fuzzy as the assembler routine itself.
+
+So, for each value (horizontally, or X) in the water buffer, we'll be:
+
+	Initializing a 16-bit signed value (let's from now on assume they all are, shall we?) to 7: LAST_HEIGHT.
+	Initializing a value that holds the color (or palette index) that corresponds to the lowest pixel of each column (200 in this case): CUR_COLOR.
+	And, as I already mentioned, we start at the bottom of this column: CUR_POS.
+
+	Then, for each value vertically (Y) in the water buffer:
+
+		We subtract 8 from LAST_HEIGHT, which in the first iteration always means it'll end up at -1.
+		We'll read from the water buffer (current position): WATER_HEIGHT.
+		We subtract LAST_HEIGHT from WATER_HEIGHT, and then do a signed check if it's not greater (store result as HEIGHT_DIFF).
+
+		IMPORTANT: starting at 7 and subtracting 8 means we're comparing a possible 0 (flat) to -1 and subsequently recognize
+		that we in fact *do* have to plot a pixel as to correctly render flat parts.
+
+		Not greater? Then skip ahead to @NOT_GREATER, otherwise:
+
+			They OR the HEIGHT_DIFF with 7, which is a nice 3 bits, which means we'll end up with a multiple of 8 plus 7.
+			This is consistent with the trick I described just above; if it's greater we're upping the stakes by 1 pixel and
+			this accomplishes exactly that.
+
+			Let me quote something that cleared it up for me, in the same spot in the code:
+
+			" ; dec dx/sar dx,3/.../dec dx/jge @2 (dx+1 times)"
+
+			Now, let us render pixels, so another loop:
+
+				Render 2 pixels (remember, Heartquake used half precision horizontally) in CUR_COLOR.
+				
+				Move your destination (screen pointer) up 1 pixel: subtract screen width from CUR_POS.
+				In Heartquake's case that's simply subtracting 320 bytes.
+
+				Subtract 8 from HEIGHT_DIFF, and keep looping as long as it's (signed compare!) above zero.
+
+			@NOT_GREATER: (this is where we would've arrived earlier if the first compare yelled NEGATORY...)
+
+			Move the pointer in the water buffer up one row (I'll reveal an implementation detail that's kind of nifty later on).
+			Tone down CUR_COLOR a single notch (so just 1 tint darker, or whatever your plan is).
+
+		Finish the vertical loop (Y).
+
+	Now, we're back to the TOPS thing. Let me show some code first:
+
+	"
+	pop bx
+    mov ax, [fs:bx]         ; get last top of column address
+    mov [fs:bx], di         ; ...and save current one for next time
+    add bx,2                ; (update ptr for next col)
+    "
+
+    What happens here is that on our current X position (top level iteration) in this array we store
+    the current position or height if you will, for *this* column (so don't forget to increase your pointer accordingly): 
+    CUR_POS. But before we do so, we load the previous one, let us call it PREV_POS.
+
+    Now what follows I realize, like many of this is an optimization so as to not redraw the entire screen
+    every frame, but this is what they did (I'm going to use a label again):
+
+    @BG_FILL:
+
+    	Compare CUR_POS with PREV_POS (signed, in HQ), and if it's lower (PREV_POS above or equal to CUR_POS),
+    	write the according background pixel(s) (in this case of course also per 2) from any source you'd like to CUR_POS,
+    	lowering CUR_POS so long as the condition remains true.
+
+    	Though this is a detail really and I'd suggest when first implementing this, just keep that stuff black or whatever.
+
+    Now, set your screen pointer (CUR_POS) to the bottom of the next column.
+    Likewise, update your water buffer pointer to the next drop.
+
+Now finish up the top level (X) loop, and presto, you're done.
+
+** FINAL WORDS **
+
+Now I'm pretty sure I made an oversight or two, a typo or three; I'm tired, as simple as this effect appears it has 
+a few nifty things going for it that make it work the way it did and I think it's very suitable for old school platforms
+just as it was more than 20 years ago.
+
+Now finally another detail I omitted is that in the PC 16-bit implementation they flipped the X and Y axis of the
+water buffers. Why? It was bad enough already to non-sequentially write to VRAM (or even a virtual screen), but this way
+they could at least sequentially run through the water buffer, saving cycles.
+
+Well that's it!
+
+** ORIGINAL CODE FOR THE RENDER/PROJECT FUNCTION **
+
+I fully realize my explanation is a bit dense and I'm not a guy who writes a lot of stuff other than trash talk, so
+just for completeness sake (though the link to the entire source is on top of the article), here's the exact code.
+
+Keep in mind, this is 16-bit x86 assembler!
+
+"
+       PROC DrawSurf NEAR
+P386
+        push bp
+
+        mov si, [word ptr U]
+        test [CT], 1
+        jz @@0
+        add si, NX*NY*2
+      @@0:                        ; ds:si -> U[CT]
+
+        mov ax, 0a000h
+        mov es, ax
+        mov di, 199*320           ; es:di -> Screen[199,0]
+
+        mov bx, offset TOPS
+        mov cx, NX
+
+        push gs fs ds
+        mov ax, ds
+        mov fs, ax
+        mov ax, [word ptr B+2]
+        mov gs, ax
+        mov ax, [word ptr U+2]
+        mov ds, ax
+
+        @@forX:
+          push cx
+          push di
+          push bx
+
+          mov bx,7                ; highest so far
+          mov bp, 200*(101h)
+          mov cx, NY
+          @@forY:
+            sub bx,8              ; each row is 8 (=1 pixel) higher
+            mov ax, [si]          ; then the last.
+            mov dx, ax
+            sub dx, bx
+            jng @@1               ; not above current highest
+             or ax, 0007          ; round to 7 + a multiple of 8
+             mov bx, ax
+                          ; dec dx/sar dx,3/.../dec dx/jge @2 (dx+1 times)
+             @@2:
+              mov [es:di],bp
+              sub di,320          ; point to next row, same column
+              sub dx,8
+              jg @@2      ; (you wouldn't believe how much
+                          ;  slower LOOP is on a 486!)
+           @@1:
+            add si,2              ; point to next column, U[CT,X,Y+1]
+            sub bp, 0101h         ; dim color one notch
+          dec cx
+          jnz @@forY      ; LOOPs suck!
+
+          pop bx
+          mov ax, [fs:bx]         ; get last top of column address
+          mov [fs:bx], di         ; ...and save current one for next time
+          add bx,2                ; (update ptr for next col)
+
+          @@3:
+          cmp ax, di
+          jae @@4
+            mov bp, [gs:di]
+            mov [es:di],bp        ; if this column is lower than the
+            sub di, 320           ; last one, clear extra rows w/ background
+            jmp @@3
+          @@4:
+
+          pop di                  ; fetch addr of row 199
+          add di,2                ; skip to next column
+          pop cx                  ; fetch counter
+          dec cx
+          jnz @@forX      ; did I mention...?  ;-)
+
+          pop ds fs gs
+          pop bp
+P286
+       ret
+       ENDP
+"
