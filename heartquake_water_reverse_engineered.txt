@@ -167,7 +167,7 @@ I fully realize my explanation is a bit dense and I'm not a guy who writes a lot
 Keep in mind, this is 16-bit x86 assembler!
 
 
-			PROC DrawSurf NEAR
+		PROC DrawSurf NEAR
 	P386
 	        push bp
 
