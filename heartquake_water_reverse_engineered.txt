@@ -129,7 +129,7 @@ So, for each value (horizontally, or X) in the water buffer, we'll be:
 
 	Now, we're back to the TOPS thing. Let me show some code first:
 
-		pop bx
+	    pop bx
 	    mov ax, [fs:bx]         ; get last top of column address
 	    mov [fs:bx], di         ; ...and save current one for next time
 	    add bx,2                ; (update ptr for next col)
