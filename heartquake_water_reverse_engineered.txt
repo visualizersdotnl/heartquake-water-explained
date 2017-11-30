@@ -109,7 +109,11 @@ So, for each value (horizontally, or X) in the water buffer, we'll be:
 
 			Let me quote something that cleared it up for me, in the same spot in the code:
 
-				; dec dx/sar dx,3/.../dec dx/jge @2 (dx+1 times)
+				dec dx
+				sar dx,3
+				/.../
+				dec dx
+				jge @2 (dx+1 times)
 
 			Now, let us render pixels, so another loop:
 
