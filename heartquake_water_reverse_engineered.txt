@@ -13,7 +13,7 @@ Original source code by Iguana: https://www.hornet.org/code/demosrc/demos/hq_wat
 Disclaimer: this is a mixture of plain text, pseudo code and an awkward blend between Pascal and x86 assembler (16-bit). It's important to know this effect was originally written for the PC 386 platform, and also, this guide was written during a drinking session.
 
 First of all: 2 water buffers are to be used. In Heartquake they are 16-bit signed buffers, 160x85 (half the screen width and a little less than half
-it's vertical resolution). Obviously this cuts into the effect's resolution, but the 16-bit precision givves a pretty decent range for arithmetic that in turn makes the effect look a lot better. So, fine tradeoff. Plus this was a 16-bit MS-DOS production, so that's the native register size to boot.
+it's vertical resolution). Obviously this cuts into the effect's resolution, but the 16-bit precision gives a pretty decent range for arithmetic that in turn makes the effect look a lot better. So, fine tradeoff. Plus this was a 16-bit MS-DOS production, so that's the native register size to boot.
 
 Now, for each frame:
 
