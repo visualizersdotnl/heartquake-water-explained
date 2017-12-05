@@ -19,7 +19,7 @@ Now, for each frame:
 
 ** STEP 1: integration **
 
-An integration step is done first, or rather, approximated. This animates the water. It's not unlike your average cheap old school blur, just a tad more intricate. So as described above, we have 2 buffers: A and B. Theoretically 3 are neeeded, but just two will do (it'll become clear later on).
+An integration step is done first, or rather, approximated. This animates the water. It's not unlike your average cheap old school blur, just a tad more intricate. So as described above, we have 2 buffers: A and B. Theoretically 3 are needed, but just two will do (it'll become clear later on).
 
 The integration loop looks as follows:
 
