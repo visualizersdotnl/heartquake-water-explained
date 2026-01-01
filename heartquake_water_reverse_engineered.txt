@@ -5,6 +5,8 @@ Written in may 2016 for retro platform coders so inclined to recreate this fun e
 By Superplek/Bypass, or as Baudsurfer put it, the coolest guy on the planet.
 Comments, bashing, pointing out typos or rubbing my nose in blatant mistakes: ndewit@gmail.com!
 
+IMPORTANT DETAIL: frame-limit integration (or simulation as we call it in modern days), or simply use VSYNC on older platforms.
+
 ** Introduction **
 
 Youtube: https://youtu.be/be58zEABBSo?t=330
@@ -250,3 +252,4 @@ Keep in mind, this is 16-bit x86 assembler!
     P286
            ret
            ENDP
+
